@@ -167,10 +167,8 @@ void search_word(const char *word)
     }
 
     HashNode *hnode = table[hash(norm)];
-    while (hnode != NULL) {
-        if (strcmp(hnode->word, norm) == 0) break;
+    while (hnode && strcmp(hnode->word, norm) != 0)
         hnode = hnode->next;
-    }
 
     if (!hnode) {
         printf("  No results found for \"%s\".\n", norm);
@@ -333,35 +331,176 @@ void print_stats(void)
     printf("  ──────────────────────────────────────────────────\n\n");
 }
 
+void free_index(void)
+{
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        HashNode *hnode = table[i];
+        while (hnode != NULL) {
+            PostingNode *pnode = hnode->postings;
+            while (pnode != NULL) {
+                PostingNode *ptmp = pnode;
+                pnode = pnode->next;
+                free(ptmp);
+            }
+            HashNode *htmp = hnode;
+            hnode = hnode->next;
+            free(htmp);
+        }
+        table[i] = NULL;
+    }
+}
+
+static void print_banner(void)
+{
+    printf("\n");
+    printf("  ╔══════════════════════════════════════════╗\n");
+    printf("  ║      Mini Search Engine  v1.0            ║\n");
+    printf("  ║  Inverted Index · Hash Table · C99       ║\n");
+    printf("  ╚══════════════════════════════════════════╝\n\n");
+}
+
+static void print_menu(void)
+{
+    printf("  ┌─────────────────────────────────┐\n");
+    printf("  │  1. Load & index documents      │\n");
+    printf("  │  2. Search — single keyword     │\n");
+    printf("  │  3. Search — AND (two keywords) │\n");
+    printf("  │  4. Show top %2d frequent words  │\n", TOP_WORDS_COUNT);
+    printf("  │  5. Index statistics            │\n");
+    printf("  │  6. Exit                        │\n");
+    printf("  └─────────────────────────────────┘\n");
+    printf("  Choice: ");
+}
+
 int main(void)
 {
     for (int i = 0; i < TABLE_SIZE; i++)
         table[i] = NULL;
 
-    char *test_files[] = { "doc1.txt", "doc2.txt", "doc3.txt" };
+    print_banner();
 
-    for (int i = 0; i < 3; i++) {
-        docs[i].doc_id = i;
-        strncpy(docs[i].filename, test_files[i], MAX_FILENAME - 1);
-        docs[i].filename[MAX_FILENAME - 1] = '\0';
-        process_file(test_files[i], i);
-        doc_count++;
+    int running = 1;
+    while (running) {
+        print_menu();
+
+        int choice;
+        if (scanf("%d", &choice) != 1) {
+            int c;
+            while ((c = getchar()) != '\n' && c != EOF);
+            printf("  [!] Please enter a number.\n\n");
+            continue;
+        }
+        int ch;
+        while ((ch = getchar()) != '\n' && ch != EOF);
+
+        switch (choice) {
+
+        case 1: {
+            if (doc_count >= MAX_DOCS) {
+                printf("  [!] Maximum document limit (%d) reached.\n\n", MAX_DOCS);
+                break;
+            }
+            printf("  How many files to load? ");
+            int n;
+            if (scanf("%d", &n) != 1 || n <= 0) {
+                while ((ch = getchar()) != '\n' && ch != EOF);
+                printf("  [!] Invalid number.\n\n");
+                break;
+            }
+            while ((ch = getchar()) != '\n' && ch != EOF);
+
+            for (int i = 0; i < n; i++) {
+                if (doc_count >= MAX_DOCS) {
+                    printf("  [!] Reached max document limit.\n");
+                    break;
+                }
+                printf("  Enter filename %d: ", i + 1);
+                char fname[MAX_FILENAME];
+                if (!fgets(fname, MAX_FILENAME, stdin)) break;
+
+                size_t len = strlen(fname);
+                if (len > 0 && fname[len - 1] == '\n')
+                    fname[len - 1] = '\0';
+
+                int id = doc_count;
+                docs[id].doc_id = id;
+                strncpy(docs[id].filename, fname, MAX_FILENAME - 1);
+                docs[id].filename[MAX_FILENAME - 1] = '\0';
+
+                printf("  Indexing \"%s\"...\n", fname);
+                process_file(fname, id);
+                doc_count++;
+                printf("  Done.\n");
+            }
+            index_built = 1;
+            printf("  All files indexed successfully.\n\n");
+            break;
+        }
+
+        case 2: {
+            if (!index_built || doc_count == 0) {
+                printf("  [!] No documents loaded. Use option 1 first.\n\n");
+                break;
+            }
+            printf("  Enter search word: ");
+            char qword[MAX_WORD_LEN];
+            if (!fgets(qword, MAX_WORD_LEN, stdin)) break;
+            size_t ql = strlen(qword);
+            if (ql > 0 && qword[ql - 1] == '\n') qword[ql - 1] = '\0';
+            search_word(qword);
+            break;
+        }
+
+        case 3: {
+            if (!index_built || doc_count == 0) {
+                printf("  [!] No documents loaded. Use option 1 first.\n\n");
+                break;
+            }
+            char w1[MAX_WORD_LEN], w2[MAX_WORD_LEN];
+            printf("  Enter first word : ");
+            if (!fgets(w1, MAX_WORD_LEN, stdin)) break;
+            size_t l1 = strlen(w1);
+            if (l1 > 0 && w1[l1 - 1] == '\n') w1[l1 - 1] = '\0';
+
+            printf("  Enter second word: ");
+            if (!fgets(w2, MAX_WORD_LEN, stdin)) break;
+            size_t l2 = strlen(w2);
+            if (l2 > 0 && w2[l2 - 1] == '\n') w2[l2 - 1] = '\0';
+
+            search_and(w1, w2);
+            break;
+        }
+
+        case 4: {
+            if (!index_built || doc_count == 0) {
+                printf("  [!] No documents indexed yet.\n\n");
+                break;
+            }
+            display_top_words();
+            break;
+        }
+
+        case 5: {
+            if (!index_built) {
+                printf("  [!] No documents indexed yet.\n\n");
+                break;
+            }
+            print_stats();
+            break;
+        }
+
+        case 6: {
+            printf("  Freeing memory...\n");
+            free_index();
+            printf("  Goodbye!\n\n");
+            running = 0;
+            break;
+        }
+
+        default:
+            printf("  [!] Invalid option. Choose 1-6.\n\n");
+        }
     }
 
-    index_built = 1;
-
-    printf("--- AND search: data + index ---\n");
-    search_and("data", "index");
-
-    printf("--- AND search: search + engine ---\n");
-    search_and("search", "engine");
-
-    printf("--- AND search: hash + quick ---\n");
-    search_and("hash", "quick");
-
-    display_top_words();
-    print_stats();
-
-    printf("OK — AND search, top words, stats verified.\n");
     return 0;
 }
