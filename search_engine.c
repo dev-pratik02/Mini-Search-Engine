@@ -1,5 +1,3 @@
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,23 +7,7 @@
 #define MAX_WORD_LEN    128
 #define MAX_DOCS        256
 #define MAX_FILENAME    512
-#define TOP_WORDS_COUNT  10
-
-
-
-
-static const char *STOP_WORDS[] = {
-    "a", "an", "the", "is", "it", "in", "on", "at", "to", "of",
-    "and", "or", "but", "for", "nor", "so", "yet", "be", "was",
-    "are", "were", "has", "have", "had", "do", "does", "did",
-    "with", "this", "that", "from", "by", "as", "not", "no",
-    "if", "its", "he", "she", "we", "they", "you", "i", "my",
-    "his", "her", "our", "their", "your", NULL
-};
-
-/* ============================================================================
- *  DATA STRUCTURES
- * ============================================================================ */
+#define TOP_WORDS_COUNT 10
 
 typedef struct {
     int  doc_id;
@@ -44,17 +26,19 @@ typedef struct HashNode {
     struct HashNode *next;
 } HashNode;
 
-/* ============================================================================
- *  GLOBAL STATE
- * ============================================================================ */
-
 static HashNode *table[TABLE_SIZE];
 static Document  docs[MAX_DOCS];
-static int       doc_count   = 0;
+static int       doc_count  = 0;
 static int       index_built = 0;
 
-
-
+static const char *STOP_WORDS[] = {
+    "a", "an", "the", "is", "it", "in", "on", "at", "to", "of",
+    "and", "or", "but", "for", "nor", "so", "yet", "be", "was",
+    "are", "were", "has", "have", "had", "do", "does", "did",
+    "with", "this", "that", "from", "by", "as", "not", "no",
+    "if", "its", "he", "she", "we", "they", "you", "i", "my",
+    "his", "her", "our", "their", "your", NULL
+};
 
 unsigned int hash(const char *word)
 {
@@ -65,11 +49,6 @@ unsigned int hash(const char *word)
     return (unsigned int)(h % TABLE_SIZE);
 }
 
-/* ============================================================================
- *  STOP-WORD CHECK
- *  Time: O(S) where S = number of stop words
- * ============================================================================ */
-
 static int is_stop_word(const char *word)
 {
     for (int i = 0; STOP_WORDS[i] != NULL; i++)
@@ -78,12 +57,10 @@ static int is_stop_word(const char *word)
     return 0;
 }
 
-
 void insert_word(const char *word, int doc_id)
 {
     unsigned int idx = hash(word);
 
-    /* --- Find or create the HashNode for this word --- */
     HashNode *hnode = table[idx];
     while (hnode != NULL) {
         if (strcmp(hnode->word, word) == 0)
@@ -98,15 +75,14 @@ void insert_word(const char *word, int doc_id)
         strncpy(hnode->word, word, MAX_WORD_LEN - 1);
         hnode->word[MAX_WORD_LEN - 1] = '\0';
         hnode->postings = NULL;
-        hnode->next     = table[idx];   /* prepend to chain */
+        hnode->next     = table[idx];
         table[idx]      = hnode;
     }
 
-    /* --- Find or create the PostingNode for this doc_id --- */
     PostingNode *pnode = hnode->postings;
     while (pnode != NULL) {
         if (pnode->doc_id == doc_id) {
-            pnode->frequency++;         /* word seen again in same document */
+            pnode->frequency++;
             return;
         }
         pnode = pnode->next;
@@ -117,57 +93,73 @@ void insert_word(const char *word, int doc_id)
 
     pnode->doc_id    = doc_id;
     pnode->frequency = 1;
-    pnode->next      = hnode->postings; /* prepend to posting list */
+    pnode->next      = hnode->postings;
     hnode->postings  = pnode;
 }
 
+void process_file(const char *filename, int doc_id)
+{
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "  [!] Cannot open file: %s\n", filename);
+        return;
+    }
 
+    char raw[MAX_WORD_LEN * 2];
+    char word[MAX_WORD_LEN];
+
+    while (fscanf(fp, "%255s", raw) == 1) {
+        int j = 0;
+        for (int i = 0; raw[i] != '\0' && j < MAX_WORD_LEN - 1; i++) {
+            if (isalpha((unsigned char)raw[i]))
+                word[j++] = (char)tolower((unsigned char)raw[i]);
+        }
+        word[j] = '\0';
+
+        if (j == 0)             continue;
+        if (is_stop_word(word)) continue;
+
+        insert_word(word, doc_id);
+    }
+
+    fclose(fp);
+}
 
 int main(void)
 {
     for (int i = 0; i < TABLE_SIZE; i++)
         table[i] = NULL;
 
-    (void)docs;
-    (void)doc_count;
-    (void)index_built;
+    char *test_files[] = { "doc1.txt", "doc2.txt", "doc3.txt" };
+    int   n = 3;
 
-    /* Verify stop-word detection */
-    printf("is_stop_word(\"the\")    = %d  (expected 1)\n", is_stop_word("the"));
-    printf("is_stop_word(\"search\") = %d  (expected 0)\n", is_stop_word("search"));
-
-    /* Simulate two documents being indexed */
-    insert_word("search", 0);
-    insert_word("engine", 0);
-    insert_word("search", 0);   /* duplicate -> should increment freq  */
-    insert_word("search", 1);   /* same word, different doc            */
-    insert_word("index",  0);
-    insert_word("index",  1);
-
-    /* Inspect posting list for "search": expect doc0=freq2, doc1=freq1 */
-    unsigned int idx  = hash("search");
-    HashNode    *node = table[idx];
-    while (node && strcmp(node->word, "search") != 0)
-        node = node->next;
-
-    if (node) {
-        printf("\nPosting list for \"search\":\n");
-        for (PostingNode *p = node->postings; p != NULL; p = p->next)
-            printf("  doc_id=%-3d  freq=%d\n", p->doc_id, p->frequency);
+    for (int i = 0; i < n; i++) {
+        docs[i].doc_id = i;
+        strncpy(docs[i].filename, test_files[i], MAX_FILENAME - 1);
+        docs[i].filename[MAX_FILENAME - 1] = '\0';
+        printf("Indexing \"%s\" (doc_id=%d)...\n", test_files[i], i);
+        process_file(test_files[i], i);
+        doc_count++;
     }
 
-    /* Inspect posting list for "index": expect doc0=freq1, doc1=freq1 */
-    idx  = hash("index");
-    node = table[idx];
-    while (node && strcmp(node->word, "index") != 0)
-        node = node->next;
+    index_built = 1;
 
-    if (node) {
-        printf("\nPosting list for \"index\":\n");
-        for (PostingNode *p = node->postings; p != NULL; p = p->next)
-            printf("  doc_id=%-3d  freq=%d\n", p->doc_id, p->frequency);
+    const char *probe_words[] = { "search", "index", "hash", "data" };
+    for (int w = 0; w < 4; w++) {
+        unsigned int idx  = hash(probe_words[w]);
+        HashNode    *node = table[idx];
+        while (node && strcmp(node->word, probe_words[w]) != 0)
+            node = node->next;
+
+        if (node) {
+            printf("\n\"%s\" found in:\n", probe_words[w]);
+            for (PostingNode *p = node->postings; p != NULL; p = p->next)
+                printf("  %-20s  freq=%d\n", docs[p->doc_id].filename, p->frequency);
+        } else {
+            printf("\n\"%s\" not found.\n", probe_words[w]);
+        }
     }
 
-    printf("\n OK — insertion and collision handling verified.\n");
+    printf("\nCommit 3 OK — file processing and normalisation verified.\n");
     return 0;
 }
