@@ -125,41 +125,109 @@ void process_file(const char *filename, int doc_id)
     fclose(fp);
 }
 
+static void sort_postings_by_frequency(PostingNode *head)
+{
+    if (!head || !head->next) return;
+
+    for (PostingNode *i = head; i != NULL; i = i->next) {
+        for (PostingNode *j = i->next; j != NULL; j = j->next) {
+            if (j->frequency > i->frequency) {
+                int tmp_id   = i->doc_id;
+                int tmp_freq = i->frequency;
+                i->doc_id    = j->doc_id;
+                i->frequency = j->frequency;
+                j->doc_id    = tmp_id;
+                j->frequency = tmp_freq;
+            }
+        }
+    }
+}
+
+static const char *get_filename_by_id(int doc_id)
+{
+    for (int i = 0; i < doc_count; i++)
+        if (docs[i].doc_id == doc_id)
+            return docs[i].filename;
+    return "(unknown)";
+}
+
+void search_word(const char *word)
+{
+    char norm[MAX_WORD_LEN];
+    int j = 0;
+    for (int i = 0; word[i] != '\0' && j < MAX_WORD_LEN - 1; i++) {
+        if (isalpha((unsigned char)word[i]))
+            norm[j++] = (char)tolower((unsigned char)word[i]);
+    }
+    norm[j] = '\0';
+
+    if (j == 0) {
+        printf("  [!] Empty or invalid query.\n");
+        return;
+    }
+
+    HashNode *hnode = table[hash(norm)];
+    while (hnode != NULL) {
+        if (strcmp(hnode->word, norm) == 0) break;
+        hnode = hnode->next;
+    }
+
+    if (!hnode) {
+        printf("  No results found for \"%s\".\n", norm);
+        return;
+    }
+
+    sort_postings_by_frequency(hnode->postings);
+
+    int count = 0;
+    for (PostingNode *p = hnode->postings; p != NULL; p = p->next)
+        count++;
+
+    printf("\n  Results for \"%s\"  (%d document%s found)\n",
+           norm, count, count == 1 ? "" : "s");
+    printf("  %-6s  %-8s  %s\n", "Rank", "Freq", "Document");
+    printf("  %-6s  %-8s  %s\n", "------", "--------",
+           "--------------------------------------------");
+
+    int rank = 1;
+    for (PostingNode *p = hnode->postings; p != NULL; p = p->next, rank++)
+        printf("  %-6d  %-8d  %s\n", rank, p->frequency,
+               get_filename_by_id(p->doc_id));
+    printf("\n");
+}
+
 int main(void)
 {
     for (int i = 0; i < TABLE_SIZE; i++)
         table[i] = NULL;
 
     char *test_files[] = { "doc1.txt", "doc2.txt", "doc3.txt" };
-    int   n = 3;
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < 3; i++) {
         docs[i].doc_id = i;
         strncpy(docs[i].filename, test_files[i], MAX_FILENAME - 1);
         docs[i].filename[MAX_FILENAME - 1] = '\0';
-        printf("Indexing \"%s\" (doc_id=%d)...\n", test_files[i], i);
         process_file(test_files[i], i);
         doc_count++;
     }
 
     index_built = 1;
 
-    const char *probe_words[] = { "search", "index", "hash", "data" };
-    for (int w = 0; w < 4; w++) {
-        unsigned int idx  = hash(probe_words[w]);
-        HashNode    *node = table[idx];
-        while (node && strcmp(node->word, probe_words[w]) != 0)
-            node = node->next;
+    printf("--- Search: \"search\" ---\n");
+    search_word("search");
 
-        if (node) {
-            printf("\n\"%s\" found in:\n", probe_words[w]);
-            for (PostingNode *p = node->postings; p != NULL; p = p->next)
-                printf("  %-20s  freq=%d\n", docs[p->doc_id].filename, p->frequency);
-        } else {
-            printf("\n\"%s\" not found.\n", probe_words[w]);
-        }
-    }
+    printf("--- Search: \"hash\" ---\n");
+    search_word("hash");
 
-    printf("\nCommit 3 OK — file processing and normalisation verified.\n");
+    printf("--- Search: \"data\" ---\n");
+    search_word("data");
+
+    printf("--- Search: \"notaword\" ---\n");
+    search_word("notaword");
+
+    printf("--- Search: \"THE\" (normalisation check) ---\n");
+    search_word("THE");
+
+    printf("Commit 4 OK — search and ranking verified.\n");
     return 0;
 }
