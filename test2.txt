@@ -1,0 +1,15 @@
+Databases store and retrieve structured data efficiently for applications.
+SQL is the standard language used to query and manage relational databases.
+Indexing in databases speeds up search queries significantly on large datasets.
+A primary key uniquely identifies each record inside a database table.
+Transactions in databases ensure data consistency through commit and rollback operations.
+Operating systems manage hardware resources and provide services to running programs.
+Process scheduling algorithms decide which program the CPU executes next.
+Memory management in operating systems involves paging and segmentation techniques.
+File systems organize data storage and retrieval on disk drives efficiently.
+Deadlocks occur when two programs wait indefinitely for each other to release resources.
+The kernel is the core component of every operating system managing hardware access.
+Virtual memory allows programs to use more memory than physically available on hardware.
+Cache memory stores frequently accessed data close to the CPU for faster retrieval.
+Database normalization reduces redundancy and improves data integrity across tables.
+Search and indexing algorithms are critical for both databases and operating systems.
